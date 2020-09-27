@@ -1,0 +1,17 @@
+[package]
+name = "vosk"
+version = "0.1.0"
+authors = ["wzhd"]
+edition = "2018"
+
+[dependencies.vosk-sys]
+path ="../vosk-sys"
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+
+[dev-dependencies]
+portaudio-rs = "0.3.2"
+riff-wave = "0.1.2"
+argh = "0.1"
