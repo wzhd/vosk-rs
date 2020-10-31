@@ -314,6 +314,12 @@ mod tests {
     }
     #[test]
     #[ignore]
+    fn word_list() {
+        let m = Model::new("model").expect("no model");
+        let mut _recognizer = Recognizer::with_vocabulary(&m, 16000.0, "yes no");
+    }
+    #[test]
+    #[ignore]
     fn share_model() {
         use ::std::thread;
         let m = Model::new("model").expect("no model");
