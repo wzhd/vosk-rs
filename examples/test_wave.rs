@@ -26,7 +26,12 @@ fn main() {
     }
     let mut buf = [0; 1024];
     let model = Model::new("model").unwrap();
-    let mut recognizer = Recognizer::new(&model, fmt.sample_rate as f32);
+    let _recognizer = Recognizer::new(&model, fmt.sample_rate as f32);
+    let mut recognizer = Recognizer::with_vocabulary(
+        &model,
+        fmt.sample_rate as f32,
+        "o zero one two three four five six seven eight nine ten",
+    );
     let mut last_part = String::new();
     loop {
         let n = read_sample(&mut wave_reader, &mut buf);
