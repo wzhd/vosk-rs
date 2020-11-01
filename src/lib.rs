@@ -1,15 +1,17 @@
 use core::fmt;
 use serde::{Deserialize, Serialize};
+use serde_json::to_writer;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::path::Path;
 use std::sync::Arc;
 use vosk_sys::{
-    vosk_model_free, vosk_model_new_or_null, vosk_recognizer_accept_waveform_f,
-    vosk_recognizer_accept_waveform_s, vosk_recognizer_final_result, vosk_recognizer_free,
-    vosk_recognizer_new, vosk_recognizer_new_grm, vosk_recognizer_new_spk,
-    vosk_recognizer_partial_result, vosk_recognizer_result, vosk_set_log_level,
-    vosk_spk_model_free, vosk_spk_model_new_or_null, VoskModel, VoskRecognizer, VoskSpkModel,
+    vosk_model_find_word, vosk_model_free, vosk_model_new_or_null,
+    vosk_recognizer_accept_waveform_f, vosk_recognizer_accept_waveform_s,
+    vosk_recognizer_final_result, vosk_recognizer_free, vosk_recognizer_new,
+    vosk_recognizer_new_grm, vosk_recognizer_new_spk, vosk_recognizer_partial_result,
+    vosk_recognizer_result, vosk_set_log_level, vosk_spk_model_free, vosk_spk_model_new_or_null,
+    VoskModel, VoskRecognizer, VoskSpkModel,
 };
 
 /// Stores all the data required for recognition
@@ -105,6 +107,20 @@ impl Model {
         let inner = Arc::new(inner);
         Ok(Model { inner })
     }
+    /// Check if a word can be recognized by the model
+    ///
+    /// returns the symbol for `word` if it exists inside the model
+    /// or None otherwise.
+    /// Note that symbol 0 is for `<epsilon>`
+    // Would it be better to return an unsigned number?
+    pub fn find_word(&self, word: &str) -> Option<i32> {
+        let cstr = CString::new(word).unwrap();
+        let sym = unsafe { vosk_model_find_word(self.ptr(), cstr.as_ptr()) };
+        if sym == -1 {
+            return None;
+        }
+        Some(sym)
+    }
     fn ptr(&self) -> *mut VoskModel {
         self.inner.as_ref().ptr
     }
@@ -144,7 +160,52 @@ impl Recognizer {
     /// Only recognizers with lookahead models support this type of quick configuration.
     ///  Precompiled HCLG graph models are not supported.
     pub fn with_vocabulary(model: &Model, sample_rate: f32, word_list: &str) -> Recognizer {
-        let cstr = CString::new(word_list).unwrap();
+        Recognizer::with_grammar(
+            model,
+            sample_rate,
+            word_list.split_whitespace().map(|w| Some(w)),
+        )
+    }
+    ///  Creates the recognizer object with limited subset of phrases to improve accuracy.
+    ///
+    /// `phrases` is anything that can be iterated through and produce each phrase as an item.
+    /// A phrase is iterable and produce each word. `Vec<Vec<String>>` works.
+    /// Also you can split a `&str` without recollecting.
+    ///
+    /// ```no_run
+    /// # use vosk::{Model, Recognizer};
+    /// # let model = Model::new("path_to_model").expect("no model");
+    /// let recognizer = Recognizer::with_grammar(
+    ///         &model,
+    ///         16000.0,
+    ///         "link start\nmake tea".lines().map(|p| p.split_whitespace()),
+    ///     );
+    /// ```
+    /// Only recognizers with lookahead models support this type of quick configuration.
+    ///  Precompiled HCLG graph models are not supported.
+    pub fn with_grammar<I, P, S>(model: &Model, sample_rate: f32, phrases: I) -> Recognizer
+    where
+        P: IntoIterator<Item = S>,
+        I: IntoIterator<Item = P>,
+        S: AsRef<str>,
+    {
+        let mut phrase = String::new();
+        let phrase_list: Vec<String> = phrases
+            .into_iter()
+            .map(|words| {
+                phrase.clear();
+                words.into_iter().for_each(|s| {
+                    let s = s.as_ref();
+                    phrase.push_str(s);
+                    phrase.push(' ');
+                });
+                let p = phrase.trim_end();
+                p.to_string()
+            })
+            .collect();
+        let mut writer = Vec::with_capacity(128);
+        to_writer(&mut writer, &phrase_list).unwrap();
+        let cstr = CString::new(writer).unwrap();
         let recognizer =
             unsafe { vosk_recognizer_new_grm(model.ptr(), sample_rate, cstr.as_ptr()) };
         Recognizer { ptr: recognizer }
@@ -317,6 +378,13 @@ mod tests {
     fn word_list() {
         let m = Model::new("model").expect("no model");
         let mut _recognizer = Recognizer::with_vocabulary(&m, 16000.0, "yes no");
+    }
+    #[test]
+    #[ignore]
+    fn phrase_list() {
+        let m = Model::new("model").expect("no model");
+        let v = vec![vec!["hello world"], vec!["initiate the process"]];
+        let mut _recognizer = Recognizer::with_grammar(&m, 16000.0, v);
     }
     #[test]
     #[ignore]
